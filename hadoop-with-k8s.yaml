@@ -1,0 +1,644 @@
+#1. NameNode
+#2. DataNode
+#3. SparkMaster
+#4. SparkWorker
+#5. Postgres
+#6. Apache Atlas [TAKES 10 Minutes to come up]
+#7. Nifi
+#8. Apache Ranger [Working--may take 10min to up]
+#9. Hue
+#10.Apache Airflow
+#---------------------  NAMENODE SERVICE --------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: namenode
+  labels: 
+    name: namenode
+    app: hadoop-cls
+spec:
+  type: NodePort
+  ports:
+    - nodePort: 32222
+      name: webui
+      port: 50070
+      targetPort: 50070
+    - nodePort: 32223
+      name: nnp
+      port: 8020
+      targetPort: 8020
+  selector:
+    name: namenode-pod
+    app: hadoop-cls
+#---------------------  NAMENODE DEPLOYMENT --------------------------------
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: namenode-deployment
+  labels:
+    app: hadoop-cls
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: namenode-pod
+      app: hadoop-cls
+  template:
+    metadata:
+      name: namenode-pod
+      labels:
+        name: namenode-pod
+        app: hadoop-cls
+    spec:
+      containers:
+      - name: namenode
+        image: uhopper/hadoop-namenode:2.7.2 
+        ports:
+          - name: nnp
+            containerPort: 8020
+          - name: webui
+            containerPort: 50070
+        env:
+          - name: CLUSTER_NAME
+            value: hadoop
+          - name: MULTIHOMED_NETWORK
+            value: "0"
+          - name: CORE_CONF_fs_defaultFS
+            value: hdfs://hadoop-namenode:8020
+          - name: HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check
+            value: "false"
+          - name: HDFS_CONF_dfs_client_use_datanode_hostname
+            value: "false"
+          - name: HDFS_CONF_dfs_datanode_use_datanode_hostname
+            value: "false"
+          - name: CORE_CONF_hadoop_proxyuser_root_hosts
+            value: "*"
+          - name: CORE_CONF_hadoop_proxyuser_root_groups
+            value: "*"
+          - name: HDFS_CONF_dfs_namenode_rpc___bind___host
+            value: "0.0.0.0"
+          - name: HDFS_CONF_dfs_namenode_servicerpc___bind___host
+            value: "0.0.0.0"
+          - name: HDFS_CONF_dfs_namenode_http___bind___host
+            value: "0.0.0.0"
+          - name: HDFS_CONF_dfs_namenode_https___bind___host
+            value: "0.0.0.0"
+#---------------------  DATANODE SERVICE --------------------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: datanode
+  labels: 
+    name: datanode
+    app: hadoop-cls
+spec:
+  type: NodePort
+  ports:
+    - nodePort: 32224
+      port: 50075
+      targetPort: 50075
+  selector:
+    name: datanode-pod
+    app: hadoop-cls
+#---------------------  DATANODE DAEMONSET --------------------------------
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: datanode-daemonset
+  labels:
+    app: hadoop-cls
+spec:
+  selector:
+    matchLabels:
+      name: datanode-pod
+      app: hadoop-cls
+  template:
+    metadata:
+      name: datanode-pod
+      labels:
+        name: datanode-pod
+        app: hadoop-cls
+
+    spec:
+      containers:
+      - name: datanode
+        image: bde2020/hadoop-datanode:1.1.0-hadoop2.8-java8
+        ports:
+          - name: webui
+            containerPort: 50075
+        env:
+          - name: CORE_CONF_fs_defaultFS
+            value: hdfs://namenode:8020
+          - name: CORE_CONF_hadoop_http_staticuser_user
+            value: root
+          - name: CORE_CONF_hadoop_proxyuser_hue_hosts
+            value: "*"
+          - name: CORE_CONF_hadoop_proxyuser_hue_groups
+            value: "*"
+          - name: HDFS_CONF_dfs_webhdfs_enabled
+            value: "true"
+          - name: HDFS_CONF_dfs_permissions_enabled
+            value: "false"
+#---------------------  SPARK MASTER SERVICE --------------------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spark-master
+  labels: 
+    name: spark-master
+    app: hadoop-cls
+spec:
+  type: NodePort
+  ports:
+    - nodePort: 32225
+      name: http
+      port: 8080
+      targetPort: 8080
+    - nodePort: 32226
+      name: spark
+      port: 7077
+      targetPort: 7077
+  selector:
+    name: spark-master-pod
+    app: hadoop-cls
+#---------------------  SPARK MASTER DEPLOYMENT --------------------------------
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-master-deployment
+  labels:
+    app: hadoop-cls
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: spark-master-pod
+      app: hadoop-cls
+  template:
+    metadata:
+      name: spark-master-pod
+      labels:
+        name: spark-master-pod
+        app: hadoop-cls
+    spec:
+      containers:
+      - name: spark-master-container
+        image: bswsahoo111/mydockerrepo_spark
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 7077
+          name: spark
+        command: ["/start-master"]
+#---------------------  SPARK WORKER SERVICE --------------------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spark-worker-svc
+  labels: 
+    name: spark-worker-svc
+    app: hadoop-cls
+spec:
+  type: NodePort
+  ports:
+    - nodePort: 32227
+      name: http
+      port: 8081
+      targetPort: 8081
+  selector:
+    name: spark-worker-pod
+    app: hadoop-cls
+#---------------------  SPARK WORKER DEPLOYMENT --------------------------------
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-worker-deployment
+  labels:
+    app: hadoop-cls
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      name: spark-worker-pod
+      app: hadoop-cls
+  template:
+    metadata:
+      name: spark-worker-pod
+      labels:
+        name: spark-worker-pod
+        app: hadoop-cls
+    spec:
+      containers:
+      - name: spark-worker
+        image: bswsahoo111/mydockerrepo_spark
+        ports:
+        - containerPort: 8081
+          name: http
+        command: ["/start-worker"]
+#---------------------  APACHE ATLAS SERVICE --------------------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: atlas
+  labels: 
+    name: atlas
+    app: hadoop-cls
+spec:
+  type: NodePort
+  ports:
+    - nodePort: 32230
+      name: atlas-port
+      port: 21000
+      targetPort: 21000
+  selector:
+    name: atlas-pod
+    app: hadoop-cls
+#---------------------  APACHE ATLAS DEPLOYMENT --------------------------------
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: atlas-deployment
+  labels:
+    app: hadoop-cls
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: atlas-pod
+      app: hadoop-cls
+  template:
+    metadata:
+      name: atlas-pod
+      labels:
+        name: atlas-pod
+        app: hadoop-cls
+    spec:
+      containers:
+      - name: atlas-container
+        image: sburn/apache-atlas
+        ports:
+        - containerPort: 21000
+          name: atlas-port
+        command: ["/opt/apache-atlas-2.0.0/bin/atlas_start.py"]
+#---------------------  NIFI SERVICES --------------------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nifi-service
+  #namespace: nifi-stateless-operator-system
+spec:
+  type: NodePort
+  ports:
+  - nodePort: 32229
+    port: 8081
+    targetPort: nifi-http
+  selector:
+    app: nifi
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 90
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry-service
+  #namespace: nifi-stateless-operator-system
+spec:
+  ports:
+  - port: 18080
+    targetPort: registry-http
+  selector:
+    app: nifi
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 90
+#---------------------  NIFI DEPLOYMENT --------------------------------
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app: nifi
+  name: nifi
+  #namespace: nifi-stateless-operator-system
+spec:
+  selector:
+    matchLabels:
+      app: nifi
+  serviceName: nifi-service
+  template:
+    metadata:
+      labels:
+        app: nifi
+    spec:
+      containers:
+      - env:
+        - name: NIFI_WEB_HTTP_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: NIFI_WEB_HTTP_PORT
+          value: "8081"
+        image: dbkegley/nifi:1.9.2
+        imagePullPolicy: Always
+        name: nifi
+        ports:
+        - containerPort: 8081
+          name: nifi-http
+      - env:
+        - name: NIFI_REGISTRY_WEB_HTTP_HOST
+          value: 0.0.0.0
+        - name: NIFI_REGISTRY_WEB_HTTP_PORT
+          value: "18080"
+        image: apache/nifi-registry:0.3.0
+        imagePullPolicy: Always
+        name: nifi-registry
+        ports:
+        - containerPort: 18080
+          name: registry-http
+#---------------------  POSTGRES CONFIGMAP --------------------------------
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  labels:
+    app: postgres
+data:
+  POSTGRES_DB: postgresdb
+  POSTGRES_USER: admin
+  POSTGRES_PASSWORD: admin
+#---------------------  POSTGRES PVC --------------------------------
+---
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: postgres-pv-volume
+  labels:
+    type: local
+    app: postgres
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: "/mnt/data"
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: postgres-pv-claim
+  labels:
+    app: postgres
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+#---------------------  POSTGRES SERVICE --------------------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    app: postgres
+spec:
+  type: NodePort
+  ports:
+    - nodePort: 32228
+      port: 5432
+      targetPort: 5432
+  selector:
+   app: postgres
+#---------------------  POSTGRES DEPLOYMENT --------------------------------
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:10.4
+          imagePullPolicy: "IfNotPresent"
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - configMapRef:
+                name: postgres-config
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: postgredb
+      volumes:
+        - name: postgredb
+          persistentVolumeClaim:
+            claimName: postgres-pv-claim
+#---------------------  RANGER POSTGRES SERVICE --------------------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-server
+  labels: 
+    name: postgres-server
+    app: hadoop-cls
+spec:
+  ports:
+    # The port that this service should serve on.
+    - port: 5432
+      targetPort: rpqsql-port 
+      protocol: TCP
+  selector:
+    name: rpsql-pod
+    app: hadoop-cls
+#---------------------  RANGER ADMIN SERVICE --------------------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ranger-admin
+  labels: 
+    name: ranger-admin
+    app: hadoop-cls
+spec:
+  type: NodePort
+  ports:
+    - nodePort: 32231
+      #name: ranger-port
+      port: 6080
+      targetPort: ranger-port
+  selector:
+    name: ranger-pod
+    app: hadoop-cls
+---
+#---------------------  RANGER DEPLOYMENT --------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ranger-deployment
+  labels:
+    app: hadoop-cls
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: ranger-pod
+      app: hadoop-cls
+  template:
+    metadata:
+      name: ranger-pod
+      labels:
+        name: ranger-pod
+        app: hadoop-cls
+    spec:
+      containers:
+      - name: rangeradm-container
+        image: ravikumar7206/ranger-admin
+        ports:
+        - containerPort: 6080
+          name: ranger-port
+---
+#---------------------  RANGER POSTGRES DEPLOYMENT --------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rpsql-deployment
+  labels:
+    app: hadoop-cls
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: rpsql-pod
+      app: hadoop-cls
+  template:
+    metadata:
+      name: rpsql-pod
+      labels:
+        name: rpsql-pod
+        app: hadoop-cls
+    spec:
+      containers:
+      - name: rpsql-container   
+        image: ravikumar7206/ranger-postgresql
+        ports:
+        - containerPort: 5432
+          name: rpqsql-port
+#---------------------  HUE SERVICE --------------------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hue
+  labels: 
+    name: hue
+    app: hadoop-cls
+spec:
+  type: NodePort
+  ports:
+    - nodePort: 32232
+      name: hue-port
+      port: 8888
+      targetPort: 8888
+  selector:
+    name: hue-pod
+    app: hadoop-cls
+#---------------------  HUE DEPLOYMENT --------------------------------
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hue-deployment
+  labels:
+    app: hadoop-cls
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: hue-pod
+      app: hadoop-cls
+  template:
+    metadata:
+      name: hue-pod
+      labels:
+        name: hue-pod
+        app: hadoop-cls
+    spec:
+      containers:
+      - name: hue-container
+        image: ravikumar7206/hue
+        ports:
+        - containerPort: 8888
+          name: hue-port
+#---------------------  AIRFLOW SERVICE --------------------------------
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: airflow
+  labels: 
+    name: airflow
+    app: hadoop-cls
+spec:
+  type: NodePort
+  ports:
+    - nodePort: 32233
+      #name: airflow-port
+      port: 8080
+      targetPort: airflow-port
+  selector:
+    name: airflow-pod
+    app: hadoop-cls
+#---------------------  AIRFLOW DEPLOYMENT --------------------------------
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-deployment
+  labels:
+    app: hadoop-cls
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: airflow-pod
+      app: hadoop-cls
+  template:
+    metadata:
+      name: airflow-pod
+      labels:
+        name: airflow-pod
+        app: hadoop-cls
+    spec:
+      containers:
+      - name: airflow-container
+        image: puckel/docker-airflow
+        ports:
+        - containerPort: 8080
+          name: airflow-port
